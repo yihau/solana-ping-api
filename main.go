@@ -35,7 +35,13 @@ func init() {
 	log.Println("ServerIP:", config.ServerIP, " HostName:", config.HostName,
 		" UseGCloudDB:", config.UseGCloudDB, " GCloudCredentialPath", config.GCloudCredentialPath, " DBConn:", config.DBConn, " Logfile:", config.Logfile)
 	log.Println("ReportClusters:", config.ReportClusters, " DataPoint1MinClusters:", config.DataPoint1MinClusters)
-	log.Println("SolanaConfig:", config.SolanaConfig)
+	log.Println("SolanaConfig/Dir:", config.SolanaConfigInfo.Dir,
+		" SolanaConfig/Mainnet", config.SolanaConfigInfo.MainnetPath,
+		" SolanaConfig/Testnet", config.SolanaConfigInfo.TestnetPath,
+		" SolanaConfig/Devnet", config.SolanaConfigInfo.DevnetPath)
+	log.Println("SolanaConfigFile/Mainnet:", config.SolanaConfigInfo.ConfigMain)
+	log.Println("SolanaConfigFile/Testnet:", config.SolanaConfigInfo.ConfigTestnet)
+	log.Println("SolanaConfigFile/Devnet:", config.SolanaConfigInfo.ConfigDevnet)
 	log.Println("SolanaPing:", config.SolanaPing)
 	log.Println("Slack:", config.Slack)
 
@@ -122,7 +128,12 @@ func GetLast6hours(c Cluster) []DataPoint1MinResultJSON {
 	if !IsDataPoint1MinClusterActive(c) {
 		return []DataPoint1MinResultJSON{}
 	}
+	lastRecord := getLastN(c, DataPoint1Min, 1)
 	now := time.Now().UTC().Unix()
+	if len(lastRecord) > 0 {
+		now = lastRecord[0].TimeStamp
+	}
+
 	// (-1) because getAfter function return only after .
 	beginOfPast60Hours := now - 6*60*60
 	records := getAfter(c, DataPoint1Min, beginOfPast60Hours)

@@ -1,28 +1,47 @@
 package main
 
 import (
+	"bufio"
+	"log"
 	"os"
+	"strings"
 
 	"github.com/spf13/viper"
 )
 
 type SolanaConfig struct {
-	Dir     string
-	Mainnet string
-	Testnet string
-	Devnet  string
+	JsonRPCURL    string
+	WebsocketURL  string
+	KeypairPath   string
+	AddressLabels map[string]string
+	Commitment    string
+}
+
+type SolanaConfigInfo struct {
+	Dir           string
+	MainnetPath   string
+	TestnetPath   string
+	DevnetPath    string
+	ConfigMain    SolanaConfig
+	ConfigTestnet SolanaConfig
+	ConfigDevnet  SolanaConfig
 }
 type PingConfig struct {
-	Count       int
-	Interval    int
-	Timeout     int
-	PerPingTime int64
+	Receiver                string
+	NumWorkers              int
+	BatchCount              int
+	BatchInverval           int
+	TxTimeout               int64
+	WaitConfirmationTimeout int64
+	StatusCheckInterval     int64
+	MinPerPingTime          int64
+	MaxPerPingTime          int64
 }
 type SolanaPing struct {
-	PingExePath   string
 	Report        PingConfig
 	DataPoint1Min PingConfig
 }
+
 type Slack struct {
 	Clusters   []Cluster
 	WebHook    string
@@ -38,7 +57,7 @@ type Config struct {
 	Logfile               string
 	ReportClusters        []Cluster
 	DataPoint1MinClusters []Cluster
-	SolanaConfig
+	SolanaConfigInfo
 	SolanaPing
 	Slack
 }
@@ -73,27 +92,59 @@ func loadConfig() Config {
 		c.DataPoint1MinClusters = append(c.DataPoint1MinClusters, Cluster(e))
 	}
 	c.Logfile = v.GetString("Logfile")
-	c.SolanaConfig = SolanaConfig{
-		Dir:     v.GetString("SolanaConfig.Dir"),
-		Mainnet: v.GetString("SolanaConfig.Mainnet"),
-		Testnet: v.GetString("SolanaConfig.Testnet"),
-		Devnet:  v.GetString("SolanaConfig.Devnet"),
+	c.SolanaConfigInfo = SolanaConfigInfo{
+		Dir:         v.GetString("SolanaConfig.Dir"),
+		MainnetPath: v.GetString("SolanaConfig.MainnetPath"),
+		TestnetPath: v.GetString("SolanaConfig.TestnetPath"),
+		DevnetPath:  v.GetString("SolanaConfig.DevnetPath"),
 	}
+	if len(c.SolanaConfigInfo.MainnetPath) > 0 {
+		sConfig, err := ReadSolanaConfigFile(c.SolanaConfigInfo.Dir + c.SolanaConfigInfo.MainnetPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		c.SolanaConfigInfo.ConfigMain = sConfig
+	}
+	if len(c.SolanaConfigInfo.TestnetPath) > 0 {
+		sConfig, err := ReadSolanaConfigFile(c.SolanaConfigInfo.Dir + c.SolanaConfigInfo.TestnetPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		c.SolanaConfigInfo.ConfigTestnet = sConfig
+	}
+	if len(c.SolanaConfigInfo.DevnetPath) > 0 {
+		sConfig, err := ReadSolanaConfigFile(c.SolanaConfigInfo.Dir + c.SolanaConfigInfo.DevnetPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		c.SolanaConfigInfo.ConfigDevnet = sConfig
+	}
+
 	c.SolanaPing = SolanaPing{
-		PingExePath: v.GetString("SolanaPing.PingExePath"),
 		Report: PingConfig{
-			Count:       v.GetInt("SolanaPing.Report.Count"),
-			Interval:    v.GetInt("SolanaPing.Report.Inverval"),
-			Timeout:     v.GetInt("SolanaPing.Report.Timeout"),
-			PerPingTime: v.GetInt64("SolanaPing.Report.PerPingTime"),
+			Receiver:                v.GetString("SolanaPing.Report.Receiver"),
+			NumWorkers:              v.GetInt("SolanaPing.Report.NumWorkers"),
+			BatchCount:              v.GetInt("SolanaPing.Report.BatchCount"),
+			BatchInverval:           v.GetInt("SolanaPing.Report.BatchInverval"),
+			TxTimeout:               v.GetInt64("SolanaPing.Report.TxTimeout"),
+			WaitConfirmationTimeout: v.GetInt64("SolanaPing.Report.PerPingTime"),
+			StatusCheckInterval:     v.GetInt64("SolanaPing.Report.StatusCheckInterval"),
+			MinPerPingTime:          v.GetInt64("SolanaPing.Report.MinPerPingTime"),
+			MaxPerPingTime:          v.GetInt64("SolanaPing.Report.MaxPerPingTime"),
 		},
 		DataPoint1Min: PingConfig{
-			Count:       v.GetInt("SolanaPing.DataPoint1Min.Count"),
-			Interval:    v.GetInt("SolanaPing.DataPoint1Min.Inverval"),
-			Timeout:     v.GetInt("SolanaPing.DataPoint1Min.Timeout"),
-			PerPingTime: v.GetInt64("SolanaPing.DataPoint1Min.PerPingTime"),
+			Receiver:                v.GetString("SolanaPing.DataPoint1Min.Receiver"),
+			NumWorkers:              v.GetInt("SolanaPing.DataPoint1Min.NumWorkers"),
+			BatchCount:              v.GetInt("SolanaPing.DataPoint1Min.BatchCount"),
+			BatchInverval:           v.GetInt("SolanaPing.DataPoint1Min.BatchInverval"),
+			TxTimeout:               v.GetInt64("SolanaPing.DataPoint1Min.TxTimeout"),
+			WaitConfirmationTimeout: v.GetInt64("SolanaPing.DataPoint1Min.PerPingTime"),
+			StatusCheckInterval:     v.GetInt64("SolanaPing.DataPoint1Min.StatusCheckInterval"),
+			MinPerPingTime:          v.GetInt64("SolanaPing.DataPoint1Min.MinPerPingTime"),
+			MaxPerPingTime:          v.GetInt64("SolanaPing.DataPoint1Min.MaxPerPingTime"),
 		},
 	}
+
 	sCluster := []Cluster{}
 	for _, e := range v.GetStringSlice("Slack.Clusters") {
 		sCluster = append(sCluster, Cluster(e))
@@ -103,16 +154,59 @@ func loadConfig() Config {
 		WebHook:    v.GetString("Slack.WebHook"),
 		ReportTime: v.GetInt("Slack.ReportTime"),
 	}
-	osPath := os.Getenv("PATH")
-	if len(osPath) != 0 {
-		osPath = c.PingExePath + ":" + osPath
-		os.Setenv("PATH", osPath)
-	}
-	os.Setenv("PATH", c.PingExePath)
-	os.Setenv("PATH", c.PingExePath)
 	gcloudCredential := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
 	if len(gcloudCredential) == 0 && len(c.GCloudCredentialPath) != 0 {
 		os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", c.GCloudCredentialPath)
 	}
 	return c
+}
+
+func ReadSolanaConfigFile(filepath string) (SolanaConfig, error) {
+	configmap := make(map[string]string, 1)
+	addressmap := make(map[string]string, 1)
+
+	f, err := os.Open(filepath)
+	if err != nil {
+		log.Printf("error opening file: %v\n", err)
+		return SolanaConfig{}, err
+	}
+	r := bufio.NewReader(f)
+	line, _, err := r.ReadLine()
+	for err == nil {
+		k, v := ToKeyPair(string(line))
+		if k == "address_labels" {
+			line, _, err := r.ReadLine()
+			lKey, lVal := ToKeyPair(string(line))
+			if err == nil && string(line)[0:1] == " " {
+				if len(lKey) > 0 && len(lVal) > 0 {
+					addressmap[lKey] = lVal
+				}
+			} else {
+				configmap[k] = v
+			}
+		} else {
+			configmap[k] = v
+		}
+
+		line, _, err = r.ReadLine()
+	}
+	return SolanaConfig{
+		JsonRPCURL:    configmap["json_rpc_url"],
+		WebsocketURL:  configmap["websocket_url:"],
+		KeypairPath:   configmap["keypair_path"],
+		AddressLabels: addressmap,
+		Commitment:    configmap["commitment"],
+	}, nil
+}
+
+func ToKeyPair(line string) (key string, val string) {
+	noSpaceLine := strings.TrimSpace(string(line))
+	idx := strings.Index(noSpaceLine, ":")
+	if idx == -1 || idx == 0 { // not found or only have :
+		return "", ""
+	}
+	if (len(noSpaceLine) - 1) == idx { // no value
+		return strings.TrimSpace(noSpaceLine[0:idx]), ""
+	}
+	return strings.TrimSpace(noSpaceLine[0:idx]), strings.TrimSpace(noSpaceLine[idx+1:])
 }
