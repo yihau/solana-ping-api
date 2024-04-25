@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/lib/pq"
@@ -39,11 +40,19 @@ type PingResult struct {
 }
 
 func addRecord(data PingResult) error {
+	if database == nil {
+		return fmt.Errorf("database is not initialized")
+	}
+
 	result := database.Create(&data)
 	return result.Error
 }
 
 func getLastN(c Cluster, pType PingType, n int, priceType ComputeUnitPriceType, threshold uint64) []PingResult {
+	if database == nil {
+		return []PingResult{}
+	}
+
 	ret := []PingResult{}
 	switch priceType {
 	case NoComputeUnitPrice:
@@ -60,6 +69,10 @@ func getLastN(c Cluster, pType PingType, n int, priceType ComputeUnitPriceType, 
 	return ret
 }
 func getAfter(c Cluster, pType PingType, t int64, priceType ComputeUnitPriceType, threshold uint64) []PingResult {
+	if database == nil {
+		return []PingResult{}
+	}
+
 	ret := []PingResult{}
 	now := time.Now().UTC().Unix()
 	switch priceType {
@@ -79,5 +92,9 @@ func getAfter(c Cluster, pType PingType, t int64, priceType ComputeUnitPriceType
 }
 
 func deleteTimeBefore(t int64) {
+	if database == nil {
+		return
+	}
+
 	database.Where("time_stamp < ?", t).Delete(&[]PingResult{})
 }

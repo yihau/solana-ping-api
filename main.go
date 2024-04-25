@@ -83,23 +83,28 @@ func init() {
 	ReportErrExpectionInit()
 	PingTakeTimeErrExpectionInit()
 
-	if config.Database.UseGoogleCloud {
-		gormDB, err := gorm.Open(postgres.New(postgres.Config{
-			DriverName: "cloudsqlpostgres",
-			DSN:        config.DBConn,
-		}))
-		if err != nil {
-			log.Panic(err)
-		}
-		database = gormDB
+	if config.DBConn == "" {
+		log.Println("dbconn is empty. won't init database")
 	} else {
-		gormDB, err := gorm.Open(postgres.Open(config.DBConn), &gorm.Config{})
-		if err != nil {
-			log.Panic(err)
+		if config.Database.UseGoogleCloud {
+			gormDB, err := gorm.Open(postgres.New(postgres.Config{
+				DriverName: "cloudsqlpostgres",
+				DSN:        config.DBConn,
+			}))
+			if err != nil {
+				log.Panic(err)
+			}
+			database = gormDB
+		} else {
+			gormDB, err := gorm.Open(postgres.Open(config.DBConn), &gorm.Config{})
+			if err != nil {
+				log.Panic(err)
+			}
+			database = gormDB
 		}
-		database = gormDB
+		log.Println("database connected")
 	}
-	log.Println("database connected")
+
 	if config.InfluxdbConfig.Enabled {
 		influxdb = NewInfluxdbClient(config.InfluxdbConfig)
 	}
