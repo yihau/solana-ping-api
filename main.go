@@ -4,7 +4,6 @@ import (
 	"flag"
 	"log"
 	"strings"
-	"time"
 
 	_ "github.com/GoogleCloudPlatform/cloudsql-proxy/proxy/dialers/postgres"
 	"github.com/blocto/solana-go-sdk/rpc"
@@ -161,7 +160,5 @@ func main() {
 		go APIService(ClustersToRun(clustersToRun))
 	}
 
-	for {
-		time.Sleep(10 * time.Second)
-	}
+	select {}
 }
