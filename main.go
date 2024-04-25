@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"log"
-	"strings"
 
 	_ "github.com/GoogleCloudPlatform/cloudsql-proxy/proxy/dialers/postgres"
 	"github.com/blocto/solana-go-sdk/rpc"
@@ -148,16 +147,19 @@ func main() {
 		}
 	}()
 	flag.Parse()
-	clustersToRun := flag.Arg(0)
-	if !(strings.Compare(clustersToRun, string(RunMainnetBeta)) == 0 ||
-		strings.Compare(clustersToRun, string(RunTestnet)) == 0 ||
-		strings.Compare(clustersToRun, string(RunDevnet)) == 0 ||
-		strings.Compare(clustersToRun, string(RunAllClusters)) == 0) {
-		go launchWorkers(RunMainnetBeta)
-		go APIService(RunMainnetBeta)
-	} else {
+	clustersToRun := ClustersToRun(flag.Arg(0))
+
+	switch clustersToRun {
+	case RunMainnetBeta, RunTestnet, RunDevnet, RunAllClusters:
+		log.Printf("run for %v\n", clustersToRun)
+
+		log.Printf("start workers")
 		go launchWorkers(ClustersToRun(clustersToRun))
+
+		log.Println("start api service")
 		go APIService(ClustersToRun(clustersToRun))
+	default:
+		log.Fatalf("unexpected arg: %v\n", clustersToRun)
 	}
 
 	select {}
