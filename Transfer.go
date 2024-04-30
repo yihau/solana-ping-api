@@ -128,7 +128,13 @@ func SendPingTx(param SendPingTxParam) (string, string, PingResultError) {
 		}
 
 		// send the tx
-		txhash, err := param.Client.SendTransaction(context.Background(), tx)
+		txhash, err := param.Client.SendTransactionWithConfig(
+			context.Background(),
+			tx,
+			client.SendTransactionConfig{
+				PreflightCommitment: rpc.CommitmentFinalized,
+			},
+		)
 		if err != nil {
 			errRecords = append(errRecords, fmt.Sprintf("failed to send the ping tx, err: %v", err))
 			continue
@@ -191,7 +197,13 @@ func waitConfirmationOrBlockhashInvalid(c *client.Client, txHash, blockhash stri
 		time.Sleep(1 * time.Second)
 
 		// check if blockhash is valid
-		isBlockhashValid, err := c.IsBlockhashValid(context.Background(), blockhash)
+		isBlockhashValid, err := c.IsBlockhashValidWithConfig(
+			context.Background(),
+			blockhash,
+			client.IsBlockhashValidConfig{
+				Commitment: rpc.CommitmentFinalized,
+			},
+		)
 		if err != nil {
 			continue
 		}
